@@ -37,6 +37,7 @@ lerna-debug.log*
 
 # dotenv environment variable files
 .env
+.env.test
 .env.development.local
 .env.test.local
 .env.production.local
@@ -56,3 +57,9 @@ pids
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 /target
+
+# Prisma: el cliente se genera en cada build e install
+/src/generated
+
+# Artefacto incremental de tsc
+*.tsbuildinfo

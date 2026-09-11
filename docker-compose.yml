@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: ecilost-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecilost
+      POSTGRES_PASSWORD: ecilost
+      POSTGRES_DB: ecilost_auth
+    ports:
+      - '5433:5432'
+    volumes:
+      - ecilost-auth-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ecilost -d ecilost_auth']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ecilost-auth-pgdata:

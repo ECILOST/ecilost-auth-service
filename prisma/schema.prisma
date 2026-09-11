@@ -1,0 +1,59 @@
+// Esquema de ecilost-auth-service.
+// Regla del proyecto: un motor relacional, un esquema por servicio, sin joins cruzados.
+// El schema `auth` viaja en el parametro ?schema= de DATABASE_URL (ver prisma.config.ts).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+  runtime      = "nodejs"
+}
+
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  STUDENT
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// Identidad de ECILOST. No guarda contrasenas: la credencial la verifica Google.
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  /// El claim `sub` de Google. Estable aunque el usuario cambie de correo.
+  googleSub String     @unique
+  fullName  String
+  role      Role       @default(STUDENT)
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
+
+/// Refresh token opaco. Solo se persiste su SHA-256; el valor en claro nunca toca la base.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  /// Cadena de rotacion. Reusar un token ya rotado revoca la familia completa.
+  familyId  String
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
