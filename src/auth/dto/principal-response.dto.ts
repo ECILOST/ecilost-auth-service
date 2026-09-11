@@ -19,14 +19,31 @@ export class PrincipalResponseDto {
   role: Role;
 
   @ApiProperty({
-    description: 'True for STAFF. Registers items and groups them into lots.',
+    description:
+      'True for STAFF. Drives two entries of the main menu: **Registrar objeto** and ' +
+      '**Crear lote**. They share one flag because they are the same capability, ' +
+      'administering the catalogue. Grouping by capability rather than by menu entry ' +
+      'means this service does not change every time the frontend reorganises its ' +
+      'navigation.',
     example: false,
   })
   canManageCatalog: boolean;
 
   @ApiProperty({
-    description: 'True for STAFF. Schedules auction rooms and their rounds.',
+    description:
+      'True for STAFF. Drives the **Programar sala** menu entry, and gates the room ' +
+      'scheduling endpoint in auction-core.',
     example: false,
   })
   canScheduleRooms: boolean;
+
+  @ApiProperty({
+    description:
+      'True for STUDENT. Operators administer lost property and do not take part in the ' +
+      'auctions, so this is false for STAFF in every room, not only in the ones they ' +
+      'scheduled. Students and operators are disjoint: whoever can bid cannot manage, ' +
+      'and the other way round.',
+    example: true,
+  })
+  canBid: boolean;
 }

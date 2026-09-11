@@ -296,6 +296,7 @@ export class AuthController {
       role: principal.role,
       canManageCatalog: principal.canManageCatalog(),
       canScheduleRooms: principal.canScheduleRooms(),
+      canBid: principal.canBid(),
     };
   }
 
