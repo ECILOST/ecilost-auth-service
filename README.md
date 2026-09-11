@@ -7,6 +7,25 @@ microservicios. HU-01 y base de HU-02.
 Entra cualquier cuenta de Google con el correo verificado. El primer inicio de sesion da de
 alta al usuario como `STUDENT`, salvo que su correo este en `STAFF_EMAILS`.
 
+## Roles
+
+Dos roles sin solapamiento. El operador administra los objetos perdidos, el estudiante
+compite en las subastas.
+
+| Capacidad | `STAFF` | `STUDENT` |
+|---|---|---|
+| Registrar objetos y crear lotes | si | no |
+| Programar salas | si | no |
+| Pujar | no | si |
+
+Un operador no puede pujar **en ninguna sala**, no solo en las que el programo: dirigir la
+subasta y competir en ella son incompatibles.
+
+`GET /auth/me` devuelve las tres banderas para que el cliente arme su menu sin cablear el
+rol. La restriccion la aplica cada servicio sobre sus propios endpoints, con `RolesGuard` y
+el decorador `@Roles`. Un `401` significa que no hay sesion valida; un `403`, que la hay
+pero el rol no alcanza.
+
 ## Puesta en marcha
 
 ```bash
