@@ -1,3 +1,70 @@
+# ecilost-auth-service
+
+Servicio de identidad de ECI Lost & Auction. Autentica con **Google OAuth 2.0**
+(Authorization Code + PKCE) y emite el access token propio que verifican los demas
+microservicios. HU-01 y base de HU-02.
+
+Entra cualquier cuenta de Google con el correo verificado. El primer inicio de sesion da de
+alta al usuario como `STUDENT`, salvo que su correo este en `STAFF_EMAILS`.
+
+## Puesta en marcha
+
+```bash
+npm install
+cp .env.example .env          # rellena GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET y las llaves
+docker compose up -d          # PostgreSQL en el puerto 5433
+npx prisma migrate dev        # crea el esquema `auth`
+npm run start:dev
+```
+
+Las llaves RS256 y el resto de variables estan documentadas en `.env.example`.
+
+## Endpoints
+
+| Metodo | Ruta | Proposito |
+|---|---|---|
+| GET | `/auth/google` | Inicia el flujo. Redirige a Google con PKCE, state y nonce |
+| GET | `/auth/google/callback` | Canjea el codigo, crea la sesion y redirige |
+| POST | `/auth/token` | Canjea la cookie de sesion por un access token de 15 min |
+| POST | `/auth/logout` | Revoca la sesion |
+| GET | `/auth/me` | Recurso protegido de referencia. Sin token valido, 401 |
+| GET | `/.well-known/jwks.json` | Llave publica para que los demas servicios verifiquen en local |
+
+La documentacion completa en OpenAPI, con la descripcion de cada endpoint y sus codigos de
+exito y de error, esta en **`/docs`** con el servicio arrancado.
+
+El access token viaja en `Authorization: Bearer`. El refresh token vive solo en una cookie
+`httpOnly` firmada y se rota en cada canje.
+
+## Pruebas
+
+Las unitarias corren sin nada mas:
+
+```bash
+npm test
+npm run lint
+npm run typecheck
+```
+
+Las de extremo a extremo necesitan PostgreSQL levantado y su propio entorno, que **no se
+versiona**. Preparalo una vez tras clonar:
+
+```bash
+cp .env.test.example .env.test   # luego genera el par RS256 con el comando que trae dentro
+docker compose up -d
+npm run test:e2e
+```
+
+Sin `.env.test` la suite se detiene nombrando el archivo que falta (`ENOENT`), en vez de
+arrancar contra la base equivocada.
+
+Las e2e usan el esquema `auth_test` sobre el mismo contenedor y sustituyen la llamada a
+Google por un doble. El resto del flujo (PKCE, state, cookies, base de datos) es el real.
+Dos valores de ese archivo estan fijados en aserciones: si cambias
+`ACCESS_TOKEN_TTL_SECONDS` o el correo de `STAFF_EMAILS`, hay pruebas que dejan de pasar.
+
+---
+
 <p align="center">
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
