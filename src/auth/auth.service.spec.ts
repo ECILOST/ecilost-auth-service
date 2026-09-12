@@ -7,7 +7,7 @@ import { buildTestConfig } from '../../test/helpers/test-config.js';
 import { UsersService, type VerifiedGoogleIdentity } from '../users/users.service.js';
 import { AuthService, type OAuthTransaction } from './auth.service.js';
 import { AuthError } from './domain/auth-error.js';
-import type { GoogleOidcClient } from './google/google-oidc.client.js';
+import { GoogleOidcClient } from './google/google-oidc.client.js';
 import { TokenService } from './tokens/token.service.js';
 
 const IDENTITY: VerifiedGoogleIdentity = {
@@ -31,6 +31,10 @@ describe('AuthService', () => {
     tokens = new TokenService(config, new FakeRefreshTokenRepository());
     await tokens.onModuleInit();
 
+    // Solo se finge el salto de red. La comprobacion del emisor usa la implementacion
+    // real, para que la prueba valide la regla y no una copia suya.
+    const real = new GoogleOidcClient(config);
+
     google = {
       createPkcePair: () => ({ codeVerifier: 'verifier', codeChallenge: 'challenge' }),
       createStateValue: () => 'state-generado',
@@ -38,6 +42,7 @@ describe('AuthService', () => {
         () => 'https://accounts.google.com/o/oauth2/v2/auth?client_id=test',
       ),
       exchangeCode: vi.fn(async () => IDENTITY),
+      assertExpectedIssuer: (issuer?: string) => real.assertExpectedIssuer(issuer),
     } as unknown as GoogleOidcClient;
 
     service = new AuthService(google, users, tokens);
@@ -88,6 +93,30 @@ describe('AuthService', () => {
     it('rechaza un state que no coincide, sin canjear el codigo', async () => {
       await expect(
         service.completeLogin({ code: 'c', state: 'state-de-atacante', transaction }),
+      ).rejects.toMatchObject({ code: 'invalid_request' });
+
+      expect(google.exchangeCode).not.toHaveBeenCalled();
+    });
+
+    it('admite el iss que Google envia en el callback (RFC 9207)', async () => {
+      const result = await service.completeLogin({
+        code: 'c',
+        state: transaction.state,
+        issuer: 'https://accounts.google.com',
+        transaction,
+      });
+
+      expect(result.refreshToken).toBeTruthy();
+    });
+
+    it('rechaza un iss de otro emisor, sin canjear el codigo', async () => {
+      await expect(
+        service.completeLogin({
+          code: 'c',
+          state: transaction.state,
+          issuer: 'https://emisor-impostor.test',
+          transaction,
+        }),
       ).rejects.toMatchObject({ code: 'invalid_request' });
 
       expect(google.exchangeCode).not.toHaveBeenCalled();

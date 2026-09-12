@@ -155,6 +155,7 @@ export class AuthController {
       const { refreshToken } = await this.auth.completeLogin({
         code: query.code,
         state: query.state,
+        issuer: query.iss,
         transaction,
       });
 

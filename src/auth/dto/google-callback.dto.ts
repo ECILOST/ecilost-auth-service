@@ -77,4 +77,17 @@ export class GoogleCallbackDto {
   @IsString()
   @MaxLength(256)
   hd?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Issuer identifier, sent by Google as described in RFC 9207. When present it must ' +
+      'match Google, otherwise the callback is rejected before the code is exchanged. ' +
+      'It defends against a mix-up attack, where a rogue authorization server tricks a ' +
+      'client into redeeming a code at the wrong provider.',
+    example: 'https://accounts.google.com',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(256)
+  iss?: string;
 }

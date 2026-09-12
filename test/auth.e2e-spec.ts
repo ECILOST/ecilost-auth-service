@@ -115,6 +115,46 @@ describe('Autenticacion con Google OAuth 2.0 (e2e)', () => {
       expect(cleared).toContain('Expires=Thu, 01 Jan 1970');
     });
 
+    it('acepta el callback real de Google, con iss y los demas parametros', async () => {
+      // Regresion: Google envia `iss` (RFC 9207) y tambien authuser, prompt, scope y hd.
+      // Con forbidNonWhitelisted activo, un parametro no declarado tumba el login con un
+      // 400 antes de llegar al controlador. Esta prueba recorre el ValidationPipe real.
+      const agent = request.agent(server());
+      const started = await agent.get('/auth/google').expect(302);
+      const state = new URL(started.headers.location).searchParams.get('state');
+      vi.spyOn(google, 'exchangeCode').mockResolvedValue(STUDENT);
+
+      const callback = await agent.get('/auth/google/callback').query({
+        code: 'codigo-de-google',
+        state,
+        iss: 'https://accounts.google.com',
+        scope: 'email profile openid',
+        authuser: '0',
+        prompt: 'consent',
+      });
+
+      expect(callback.status).toBe(302);
+      expect(callback.headers.location).toBe(config.postLoginRedirectUrl);
+    });
+
+    it('rechaza un callback cuyo iss no es el de Google', async () => {
+      const agent = request.agent(server());
+      const started = await agent.get('/auth/google').expect(302);
+      const state = new URL(started.headers.location).searchParams.get('state');
+      const exchange = vi.spyOn(google, 'exchangeCode').mockResolvedValue(STUDENT);
+
+      const callback = await agent
+        .get('/auth/google/callback')
+        .query({ code: 'c', state, iss: 'https://emisor-impostor.test' })
+        .expect(302);
+
+      expect(new URL(callback.headers.location).searchParams.get('error')).toBe(
+        'invalid_request',
+      );
+      expect(exchange).not.toHaveBeenCalled();
+      expect(await prisma.user.count()).toBe(0);
+    });
+
     it('pasa a Google el nonce de la transaccion en curso', async () => {
       const agent = request.agent(server());
       const started = await agent.get('/auth/google').expect(302);

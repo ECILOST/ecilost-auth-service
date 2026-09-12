@@ -58,9 +58,10 @@ export class AuthService {
   async completeLogin(params: {
     code?: string;
     state?: string;
+    issuer?: string;
     transaction?: OAuthTransaction;
   }): Promise<{ refreshToken: string }> {
-    const { code, state, transaction } = params;
+    const { code, state, issuer, transaction } = params;
 
     if (!transaction) {
       throw new AuthError('invalid_request', 'no hay transaccion OAuth en curso');
@@ -68,6 +69,7 @@ export class AuthService {
     if (!state || !equalsConstantTime(state, transaction.state)) {
       throw new AuthError('invalid_request', 'state no coincide (posible CSRF)');
     }
+    this.google.assertExpectedIssuer(issuer);
     if (!code) {
       throw new AuthError('invalid_request', 'callback sin code');
     }

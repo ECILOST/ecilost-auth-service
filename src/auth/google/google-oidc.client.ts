@@ -33,6 +33,18 @@ export class GoogleOidcClient {
     };
   }
 
+  /**
+   * Comprueba el parametro `iss` del callback (RFC 9207). Google lo envia; si algun dia
+   * dejara de hacerlo, ausente se acepta. Presente y distinto, se rechaza: es la señal de
+   * un ataque de confusion de emisor, en el que se induce al cliente a canjear el codigo
+   * contra un proveedor que no es el que emitio la autorizacion.
+   */
+  assertExpectedIssuer(issuer?: string): void {
+    if (issuer !== undefined && !VALID_ISSUERS.includes(issuer)) {
+      throw new AuthError('invalid_request', `iss inesperado en el callback: ${issuer}`);
+    }
+  }
+
   createStateValue(): string {
     return randomBytes(16).toString('base64url');
   }
