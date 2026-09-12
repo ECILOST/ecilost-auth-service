@@ -11,7 +11,12 @@ export interface VerifiedGoogleIdentity {
   email: string;
   fullName: string;
   emailVerified: boolean;
+  /** URL del avatar publicada por Google. Puede faltar. */
+  avatarUrl?: string;
 }
+
+/** Longitud y forma admitidas para el carne. Supuesto permisivo: no conozco el real. */
+export const INSTITUTIONAL_CODE_PATTERN = /^[A-Za-z0-9-]{4,20}$/;
 
 @Injectable()
 export class UsersService {
@@ -47,6 +52,7 @@ export class UsersService {
       googleSub: identity.sub,
       email,
       fullName: identity.fullName,
+      avatarUrl: identity.avatarUrl,
       role: this.roleFor(email),
     });
 
@@ -60,6 +66,24 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  /**
+   * Fija o borra el carne institucional del usuario.
+   *
+   * Se recorta el texto y se trata la cadena vacia como borrado, que es lo que manda un
+   * formulario cuando el usuario limpia el campo. El choque con otra persona lo arbitra la
+   * restriccion unica de la base, no una consulta previa.
+   */
+  async setInstitutionalCode(userId: string, rawCode: string | null): Promise<User> {
+    await this.requireActiveById(userId);
+
+    const code = rawCode?.trim() ? rawCode.trim() : null;
+    if (code !== null && !INSTITUTIONAL_CODE_PATTERN.test(code)) {
+      throw new AuthError('invalid_request', 'formato de codigo institucional invalido');
+    }
+
+    return this.users.setInstitutionalCode(userId, code);
   }
 
   /**

@@ -9,7 +9,6 @@ generator client {
   runtime      = "nodejs"
 }
 
-
 datasource db {
   provider = "postgresql"
 }
@@ -26,15 +25,25 @@ enum UserStatus {
 
 /// Identidad de ECILOST. No guarda contrasenas: la credencial la verifica Google.
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
+  id                String     @id @default(uuid())
+  email             String     @unique
   /// El claim `sub` de Google. Estable aunque el usuario cambie de correo.
-  googleSub String     @unique
-  fullName  String
-  role      Role       @default(STUDENT)
-  status    UserStatus @default(ACTIVE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  googleSub         String     @unique
+  fullName          String
+  /// URL del avatar que publica Google. Se refresca en cada inicio de sesion.
+  avatarUrl         String?
+  /// Carne de la universidad. No lo da Google: lo escribe el usuario.
+  /// Opcional porque entra cualquier cuenta y mucha gente no tendra uno; unico porque dos
+  /// personas no pueden compartirlo. En PostgreSQL un UNIQUE admite varios NULL, asi que
+  /// las dos condiciones conviven sin trucos.
+  ///
+  /// No se llama `studentId` a proposito: ese nombre ya significa el `id` de esta tabla en
+  /// wallet, auction-core y engagement.
+  institutionalCode String?    @unique
+  role              Role       @default(STUDENT)
+  status            UserStatus @default(ACTIVE)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
 
   refreshTokens RefreshToken[]
 

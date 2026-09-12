@@ -5,7 +5,16 @@ export interface ProvisionUserInput {
   googleSub: string;
   email: string;
   fullName: string;
+  avatarUrl?: string;
   role: Role;
+}
+
+/** Se lanza cuando el carne ya pertenece a otra persona. */
+export class InstitutionalCodeTakenError extends Error {
+  constructor() {
+    super('El codigo institucional ya esta registrado por otra persona.');
+    this.name = 'InstitutionalCodeTakenError';
+  }
 }
 
 /**
@@ -26,6 +35,15 @@ export interface UserRepository {
    * darlo de alta, y cambiarlo o suspenderlo es una operacion administrativa aparte.
    */
   provision(input: ProvisionUserInput): Promise<User>;
+
+  /**
+   * Fija o borra el carne. `null` lo deja vacio.
+   *
+   * Debe apoyarse en la restriccion unica de la base y lanzar
+   * InstitutionalCodeTakenError al violarla. Comprobar antes si esta libre y escribir
+   * despues deja una ventana en la que dos peticiones simultaneas pasan las dos.
+   */
+  setInstitutionalCode(userId: string, code: string | null): Promise<User>;
 }
 
 export const USER_REPOSITORY = Symbol('UserRepository');

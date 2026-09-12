@@ -145,7 +145,22 @@ export class GoogleOidcClient {
       email,
       fullName: typeof claims.name === 'string' ? claims.name : email,
       emailVerified: claims.email_verified === true,
+      avatarUrl: readAvatarUrl(claims.picture),
     };
+  }
+}
+
+/**
+ * El claim `picture` llega con el permiso `profile`, que ya pedimos. Puede faltar, asi que
+ * es opcional. Solo se acepta https: guardar cualquier otra cosa dejaria que un claim
+ * manipulado terminara como origen de una imagen en el navegador del usuario.
+ */
+export function readAvatarUrl(picture: unknown): string | undefined {
+  if (typeof picture !== 'string') return undefined;
+  try {
+    return new URL(picture).protocol === 'https:' ? picture : undefined;
+  } catch {
+    return undefined;
   }
 }
 

@@ -1,6 +1,9 @@
 import {
+  Body,
+  ConflictException,
   Controller,
   Get,
+  Patch,
   HttpCode,
   HttpStatus,
   Logger,
@@ -13,6 +16,7 @@ import {
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCookieAuth,
   ApiFoundResponse,
   ApiNoContentResponse,
@@ -32,6 +36,11 @@ import { AccessTokenResponseDto } from './dto/access-token-response.dto.js';
 import { ErrorResponseDto } from './dto/error-response.dto.js';
 import { GoogleCallbackDto } from './dto/google-callback.dto.js';
 import { PrincipalResponseDto } from './dto/principal-response.dto.js';
+import { ProfileResponseDto } from './dto/profile-response.dto.js';
+import { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { InstitutionalCodeTakenError } from '../users/ports/user.repository.js';
+import { UsersService } from '../users/users.service.js';
+import type { User } from '../users/entities/user.entity.js';
 
 const TRANSACTION_COOKIE = 'oauth_tx';
 const REFRESH_COOKIE = 'ecilost_rt';
@@ -44,6 +53,7 @@ export class AuthController {
 
   constructor(
     private readonly auth: AuthService,
+    private readonly users: UsersService,
     private readonly config: AuthConfig,
   ) {}
 
@@ -301,6 +311,85 @@ export class AuthController {
     };
   }
 
+  /**
+   * Datos de perfil. A diferencia de /auth/me, esto SI consulta la base: el nombre, el
+   * avatar y el carne viven ahi, no en el token. Se mantienen separados a proposito, para
+   * que /auth/me siga siendo el ejemplo de verificacion local que copian los demas
+   * servicios.
+   */
+  @Get('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Read the profile of the signed-in user',
+    description: [
+      'Everything a client needs to render the account: email, display name, avatar, ',
+      'university code and role.',
+      '',
+      'Unlike `GET /auth/me`, this reads the database. `/auth/me` only decodes the token',
+      'and is the reference example of how other services verify a session locally; these',
+      'fields are not in the token, on purpose, to keep personal data out of a credential',
+      'that travels across five services.',
+      '',
+      'The account is re-checked on every call, so a suspended user stops getting a profile',
+      'immediately rather than when their token expires.',
+    ].join('\n'),
+  })
+  @ApiOkResponse({ description: 'The profile of the caller.', type: ProfileResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'No valid access token, or the account is no longer active.',
+  })
+  async profile(@CurrentUser() principal: Principal): Promise<ProfileResponseDto> {
+    return toProfile(await this.users.requireActiveById(principal.userId));
+  }
+
+  @Patch('profile')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Set or clear the university code',
+    description: [
+      'The university code is the only profile field the person owns: Google supplies the',
+      'name and the avatar, and those are overwritten on every sign-in.',
+      '',
+      'Send `institutionalCode` to set it, or `null` (or an empty string) to clear it.',
+      'Omit the field and nothing changes.',
+      '',
+      'It is unique across the platform. Uniqueness is enforced by the database rather than',
+      'by checking first and writing afterwards, because that check leaves a window where',
+      'two simultaneous requests both succeed.',
+      '',
+      'Note it is **not** the identifier the rest of ECILOST uses to refer to a person.',
+      'That one is `userId`, and it never changes.',
+    ].join('\n'),
+  })
+  @ApiOkResponse({ description: 'The profile after the change.', type: ProfileResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'The code does not match the accepted shape: 4 to 20 letters, digits or hyphens.',
+  })
+  @ApiUnauthorizedResponse({ description: 'No valid access token.' })
+  @ApiConflictResponse({ description: 'Another person already registered that code.' })
+  async updateProfile(
+    @CurrentUser() principal: Principal,
+    @Body() body: UpdateProfileDto,
+  ): Promise<ProfileResponseDto> {
+    if (body.institutionalCode === undefined) {
+      return toProfile(await this.users.requireActiveById(principal.userId));
+    }
+
+    try {
+      return toProfile(
+        await this.users.setInstitutionalCode(principal.userId, body.institutionalCode),
+      );
+    } catch (error) {
+      if (error instanceof InstitutionalCodeTakenError) {
+        throw new ConflictException(error.message);
+      }
+      throw error;
+    }
+  }
+
   // --- Cookies ------------------------------------------------------------
 
   private cookieOptions(): CookieOptions {
@@ -341,4 +430,16 @@ export class AuthController {
     target.searchParams.set('error_description', AUTH_ERROR_MESSAGES[code]);
     response.redirect(target.toString());
   }
+}
+
+/** Proyecta la fila de la base al contrato publico, sin filtrar columnas internas. */
+function toProfile(user: User): ProfileResponseDto {
+  return {
+    userId: user.id,
+    email: user.email,
+    fullName: user.fullName,
+    avatarUrl: user.avatarUrl,
+    institutionalCode: user.institutionalCode,
+    role: user.role,
+  };
 }

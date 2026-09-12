@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { User } from '../entities/user.entity.js';
-import type { ProvisionUserInput, UserRepository } from '../ports/user.repository.js';
+import {
+  InstitutionalCodeTakenError,
+  type ProvisionUserInput,
+  type UserRepository,
+} from '../ports/user.repository.js';
 
 @Injectable()
 export class PrismaUserRepository implements UserRepository {
@@ -23,12 +27,36 @@ export class PrismaUserRepository implements UserRepository {
         googleSub: input.googleSub,
         email: input.email,
         fullName: input.fullName,
+        avatarUrl: input.avatarUrl ?? null,
         role: input.role,
       },
       update: {
         email: input.email,
         fullName: input.fullName,
+        avatarUrl: input.avatarUrl ?? null,
       },
     });
   }
+
+  async setInstitutionalCode(userId: string, code: string | null): Promise<User> {
+    try {
+      return await this.prisma.user.update({
+        where: { id: userId },
+        data: { institutionalCode: code },
+      });
+    } catch (error) {
+      // P2002 es la violacion de restriccion unica. Es la base quien arbitra, no un
+      // SELECT previo, que dejaria pasar dos peticiones simultaneas.
+      if (isUniqueViolation(error)) throw new InstitutionalCodeTakenError();
+      throw error;
+    }
+  }
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { code?: unknown }).code === 'P2002'
+  );
 }
