@@ -47,6 +47,8 @@ Las llaves RS256 y el resto de variables estan documentadas en `.env.example`.
 | POST | `/auth/token` | Canjea la cookie de sesion por un access token de 15 min |
 | POST | `/auth/logout` | Revoca la sesion |
 | GET | `/auth/me` | Recurso protegido de referencia. Sin token valido, 401 |
+| GET | `/auth/profile` | Correo, nombre, avatar, codigo institucional y rol |
+| PATCH | `/auth/profile` | Fija o borra el codigo institucional |
 | GET | `/.well-known/jwks.json` | Llave publica para que los demas servicios verifiquen en local |
 
 La documentacion completa en OpenAPI, con la descripcion de cada endpoint y sus codigos de
@@ -54,6 +56,22 @@ exito y de error, esta en **`/docs`** con el servicio arrancado.
 
 El access token viaja en `Authorization: Bearer`. El refresh token vive solo en una cookie
 `httpOnly` firmada y se rota en cada canje.
+
+## Perfil
+
+`/auth/me` decodifica el token y no consulta la base: por eso sirve de ejemplo de como los
+demas servicios verifican una sesion por su cuenta. `/auth/profile` si la consulta, porque
+ahi viven los datos de presentacion. El token solo lleva `sub` y `role`, para que un token
+filtrado exponga lo menos posible.
+
+| Campo | De donde sale | Quien lo cambia |
+|---|---|---|
+| `fullName`, `avatarUrl` | Google, en cada inicio de sesion | Google |
+| `email`, `role` | Se fijan al dar de alta la cuenta | Nadie, desde la API |
+| `institutionalCode` | Lo escribe la persona | La persona, con `PATCH /auth/profile` |
+
+El codigo institucional es unico y opcional. **No** es el identificador con el que los demas
+servicios se refieren a alguien: ese es `userId`, que nunca cambia.
 
 ## Pruebas
 
