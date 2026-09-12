@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildTestConfig } from '../../../test/helpers/test-config.js';
 import { AuthError } from '../domain/auth-error.js';
-import { GoogleOidcClient } from './google-oidc.client.js';
+import { GoogleOidcClient, readAvatarUrl } from './google-oidc.client.js';
 
 describe('GoogleOidcClient', () => {
   let config: ReturnType<typeof buildTestConfig>;
@@ -78,6 +78,27 @@ describe('GoogleOidcClient', () => {
       });
 
       expect(url).not.toContain(config.googleClientSecret);
+    });
+  });
+
+  describe('readAvatarUrl', () => {
+    it.each([
+      ['una URL https', 'https://lh3.googleusercontent.com/a/foto'],
+      ['una URL https con puerto', 'https://cdn.test:8443/foto.png'],
+    ])('acepta %s', (_caso, entrada) => {
+      expect(readAvatarUrl(entrada)).toBe(entrada);
+    });
+
+    it.each([
+      ['http sin cifrar', 'http://inseguro.test/foto'],
+      ['un javascript:', 'javascript:alert(1)'],
+      ['un data:', 'data:image/png;base64,AAAA'],
+      ['texto que no es URL', 'no-soy-una-url'],
+      ['ausente', undefined],
+      ['nulo', null],
+      ['un numero', 42],
+    ])('descarta %s', (_caso, entrada) => {
+      expect(readAvatarUrl(entrada)).toBeUndefined();
     });
   });
 

@@ -5,9 +5,10 @@ import type {
   StoredRefreshToken,
 } from '../../src/auth/tokens/refresh-token.repository.js';
 import type { User } from '../../src/users/entities/user.entity.js';
-import type {
-  ProvisionUserInput,
-  UserRepository,
+import {
+  InstitutionalCodeTakenError,
+  type ProvisionUserInput,
+  type UserRepository,
 } from '../../src/users/ports/user.repository.js';
 
 /**
@@ -28,7 +29,12 @@ export class FakeUserRepository implements UserRepository {
   async provision(input: ProvisionUserInput): Promise<User> {
     const existing = await this.findByGoogleSub(input.googleSub);
     if (existing) {
-      const updated = { ...existing, email: input.email, fullName: input.fullName };
+      const updated = {
+        ...existing,
+        email: input.email,
+        fullName: input.fullName,
+        avatarUrl: input.avatarUrl ?? null,
+      };
       this.rows.set(existing.id, updated);
       return updated;
     }
@@ -38,6 +44,8 @@ export class FakeUserRepository implements UserRepository {
       email: input.email,
       googleSub: input.googleSub,
       fullName: input.fullName,
+      avatarUrl: input.avatarUrl ?? null,
+      institutionalCode: null,
       role: input.role,
       status: 'ACTIVE',
       createdAt: new Date(),
@@ -47,6 +55,18 @@ export class FakeUserRepository implements UserRepository {
     return created;
   }
 
+  async setInstitutionalCode(userId: string, code: string | null): Promise<User> {
+    const taken = [...this.rows.values()].some(
+      (u) => u.id !== userId && code !== null && u.institutionalCode === code,
+    );
+    if (taken) throw new InstitutionalCodeTakenError();
+
+    const user = this.rows.get(userId);
+    const updated = { ...user, institutionalCode: code };
+    this.rows.set(userId, updated);
+    return updated;
+  }
+
   /** Atajo de prueba: siembra un usuario ya existente. */
   seed(user: Partial<User> & Pick<User, 'googleSub' | 'email'>): User {
     const row: User = {
@@ -54,6 +74,8 @@ export class FakeUserRepository implements UserRepository {
       email: user.email,
       googleSub: user.googleSub,
       fullName: user.fullName ?? 'Estudiante de Prueba',
+      avatarUrl: user.avatarUrl ?? null,
+      institutionalCode: user.institutionalCode ?? null,
       role: user.role ?? 'STUDENT',
       status: user.status ?? 'ACTIVE',
       createdAt: user.createdAt ?? new Date(),
