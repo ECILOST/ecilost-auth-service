@@ -7,7 +7,13 @@ import { AppService } from './app.service.js';
 export class AppController {
   constructor(private readonly appService: AppService) {}
 
+  /** Ruta de ejemplo original; se mantiene para no romper consumidores existentes. */
   @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+
+  @Get('health')
   @ApiOperation({
     summary: 'Liveness probe',
     description:
@@ -17,9 +23,13 @@ export class AppController {
   })
   @ApiOkResponse({
     description: 'The service is running.',
-    schema: { type: 'string', example: 'Hello World!' },
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: { status: { type: 'string', example: 'ok' } },
+    },
   })
-  getHello(): string {
-    return this.appService.getHello();
+  health(): { status: 'ok' } {
+    return this.appService.health();
   }
 }
