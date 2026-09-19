@@ -22,6 +22,13 @@ export class FakeUserRepository implements UserRepository {
     return this.rows.get(id) ?? null;
   }
 
+  async findByEmail(email: string): Promise<User | null> {
+    // Comparacion exacta, como el UNIQUE de la columna: quien busca ya normalizo.
+    return (
+      [...this.rows.values()].find((user) => user.email === email) ?? null
+    );
+  }
+
   async findByGoogleSub(googleSub: string): Promise<User | null> {
     return [...this.rows.values()].find((u) => u.googleSub === googleSub) ?? null;
   }

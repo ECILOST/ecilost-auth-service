@@ -24,6 +24,12 @@ export class InstitutionalCodeTakenError extends Error {
 export interface UserRepository {
   findById(id: string): Promise<User | null>;
 
+  /**
+   * Busca por correo exacto. El correo se guarda siempre en minusculas, asi que quien
+   * llame tiene que normalizarlo antes o no encontrara a nadie.
+   */
+  findByEmail(email: string): Promise<User | null>;
+
   findByGoogleSub(googleSub: string): Promise<User | null>;
 
   /**

@@ -39,6 +39,16 @@ export class PrincipalResponseDto {
 
   @ApiProperty({
     description:
+      'True for STAFF. Drives the **Recargar billetera** menu entry, and gates the top-up ' +
+      'endpoint in wallet-service. It is a separate flag from canManageCatalog because it ' +
+      'is a separate capability: granting ECICoin is not administering lost property, and ' +
+      'the day a treasury role does one without the other, only this service changes.',
+    example: false,
+  })
+  canManageWallets: boolean;
+
+  @ApiProperty({
+    description:
       'True for STUDENT. Operators administer lost property and do not take part in the ' +
       'auctions, so this is false for STAFF in every room, not only in the ones they ' +
       'scheduled. Students and operators are disjoint: whoever can bid cannot manage, ' +

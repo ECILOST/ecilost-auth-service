@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  NotFoundException,
   Post,
   Query,
   Req,
@@ -18,8 +19,10 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiCookieAuth,
+  ApiForbiddenResponse,
   ApiFoundResponse,
   ApiNoContentResponse,
+  ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
@@ -27,6 +30,9 @@ import {
 } from '@nestjs/swagger';
 import type { CookieOptions, Request, Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import { Roles } from '../common/decorators/roles.decorator.js';
+import { RolesGuard } from '../common/guards/roles.guard.js';
+import { Role } from './domain/role.enum.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { AuthConfig } from '../config/auth.config.js';
 import { AuthService, type OAuthTransaction } from './auth.service.js';
@@ -38,6 +44,7 @@ import { GoogleCallbackDto } from './dto/google-callback.dto.js';
 import { PrincipalResponseDto } from './dto/principal-response.dto.js';
 import { ProfileResponseDto } from './dto/profile-response.dto.js';
 import { UpdateProfileDto } from './dto/update-profile.dto.js';
+import { FindUserQueryDto, UserLookupResponseDto } from './dto/user-lookup.dto.js';
 import { InstitutionalCodeTakenError } from '../users/ports/user.repository.js';
 import { UsersService } from '../users/users.service.js';
 import type { User } from '../users/entities/user.entity.js';
@@ -307,6 +314,7 @@ export class AuthController {
       role: principal.role,
       canManageCatalog: principal.canManageCatalog(),
       canScheduleRooms: principal.canScheduleRooms(),
+      canManageWallets: principal.canManageWallets(),
       canBid: principal.canBid(),
     };
   }
@@ -388,6 +396,62 @@ export class AuthController {
       }
       throw error;
     }
+  }
+
+  /**
+   * Traduce un correo a un `userId`, para operar sobre esa cuenta desde otro servicio.
+   */
+  @Get('users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.STAFF)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Find a person by their email address',
+    description: [
+      'Resolves an email address to the `userId` that the rest of the platform stores.',
+      '',
+      'It exists because the two sides speak different languages: an operator knows a',
+      'person by their institutional email, while wallet, auction-core and engagement only',
+      'ever store `userId`. Without this, an operation such as topping up a wallet cannot',
+      'be carried out from an interface, because there is nothing to type into it.',
+      '',
+      '**Exact match, one result, operators only.** It is deliberately not a listing and',
+      'not a partial search: the purpose is confirming somebody you already know of, not',
+      'walking the directory. Matching is case insensitive, because addresses are stored',
+      'lowercased.',
+      '',
+      'The response carries `status` so the caller can see that a suspended account is not',
+      'worth operating on before doing it.',
+    ].join('\n'),
+  })
+  @ApiOkResponse({
+    description: 'The account behind that address.',
+    type: UserLookupResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: '`email` is missing or is not a valid address.',
+  })
+  @ApiForbiddenResponse({
+    description: 'The session is valid but the role is not an operator.',
+  })
+  @ApiNotFoundResponse({
+    description: 'No account uses that address.',
+  })
+  async findUser(
+    @Query() query: FindUserQueryDto,
+  ): Promise<UserLookupResponseDto> {
+    const user = await this.users.findByEmail(query.email);
+    if (!user) {
+      throw new NotFoundException('No hay ninguna cuenta con ese correo.');
+    }
+
+    return {
+      userId: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      role: user.role,
+      status: user.status,
+    };
   }
 
   // --- Cookies ------------------------------------------------------------

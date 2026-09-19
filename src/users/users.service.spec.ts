@@ -24,6 +24,34 @@ describe('UsersService (politica de acceso)', () => {
     service = new UsersService(repository, buildTestConfig());
   });
 
+  describe('busqueda por correo', () => {
+    it('encuentra a quien ya tiene cuenta, para traducir su correo a su userId', async () => {
+      const creado = await service.resolveOrProvision(identity());
+
+      const encontrado = await service.findByEmail(
+        'estudiante@escuelaing.edu.co',
+      );
+
+      expect(encontrado?.id).toBe(creado.id);
+    });
+
+    it('no distingue mayusculas: el correo se guarda en minusculas', async () => {
+      await service.resolveOrProvision(identity());
+
+      // Un funcionario escribiendo a mano no tiene por que respetar la caja, y la columna
+      // es UNIQUE sobre el valor ya normalizado.
+      const encontrado = await service.findByEmail(
+        '  Estudiante@Escuelaing.Edu.Co  ',
+      );
+
+      expect(encontrado).not.toBeNull();
+    });
+
+    it('devuelve null cuando no hay cuenta con ese correo', async () => {
+      expect(await service.findByEmail('nadie@escuelaing.edu.co')).toBeNull();
+    });
+  });
+
   it('provisiona como STUDENT a una cuenta de Google verificada', async () => {
     const user = await service.resolveOrProvision(identity());
 
