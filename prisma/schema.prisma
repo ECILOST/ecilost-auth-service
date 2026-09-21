@@ -46,8 +46,26 @@ model User {
   updatedAt         DateTime   @updatedAt
 
   refreshTokens RefreshToken[]
+  outboxEvents  OutboxEvent[]
 
   @@map("users")
+}
+
+/// Evento de integracion persistido en la misma transaccion que el alta del usuario.
+/// El publicador lo entrega a RabbitMQ despues del commit; asi una caida del broker no
+/// puede dejar una identidad creada sin una oportunidad de aprovisionar su billetera.
+model OutboxEvent {
+  id          String   @id @default(uuid())
+  type        String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occurredAt  DateTime @default(now())
+  publishedAt DateTime?
+  attempts    Int      @default(0)
+
+  @@unique([userId, type])
+  @@index([publishedAt, occurredAt])
+  @@map("outbox_events")
 }
 
 /// Refresh token opaco. Solo se persiste su SHA-256; el valor en claro nunca toca la base.

@@ -32,7 +32,9 @@ export class EnvironmentVariables {
   @IsNotEmpty() @IsString() JWT_AUDIENCE: string;
 
   /** PEM PKCS#8 codificado en base64, para que quepa en una linea de .env */
-  @IsNotEmpty({ message: 'JWT_PRIVATE_KEY es obligatorio (PEM PKCS#8 en base64)' })
+  @IsNotEmpty({
+    message: 'JWT_PRIVATE_KEY es obligatorio (PEM PKCS#8 en base64)',
+  })
   @IsString()
   JWT_PRIVATE_KEY: string;
 
@@ -48,9 +50,13 @@ export class EnvironmentVariables {
 
   @IsUrl({ require_tld: false }) POST_LOGIN_REDIRECT_URL: string;
   @IsUrl({ require_tld: false }) POST_LOGIN_ERROR_URL: string;
+
+  @IsNotEmpty() @IsString() RABBITMQ_URL: string;
 }
 
-export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables {
+export function validateEnv(
+  raw: Record<string, unknown>,
+): EnvironmentVariables {
   const parsed = plainToInstance(EnvironmentVariables, raw, {
     enableImplicitConversion: true,
   });
@@ -58,7 +64,10 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
   const errors = validateSync(parsed, { skipMissingProperties: false });
   if (errors.length > 0) {
     const detail = errors
-      .map((e) => `  - ${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`)
+      .map(
+        (e) =>
+          `  - ${e.property}: ${Object.values(e.constraints ?? {}).join(', ')}`,
+      )
       .join('\n');
     throw new Error(`Configuracion de entorno invalida:\n${detail}`);
   }
@@ -83,6 +92,7 @@ export class AuthConfig {
   readonly cookieSecure: boolean;
   readonly postLoginRedirectUrl: string;
   readonly postLoginErrorUrl: string;
+  readonly rabbitmqUrl: string;
 
   constructor(env: EnvironmentVariables) {
     this.databaseUrl = env.DATABASE_URL;
@@ -106,6 +116,7 @@ export class AuthConfig {
     this.cookieSecure = env.COOKIE_SECURE === 'true';
     this.postLoginRedirectUrl = env.POST_LOGIN_REDIRECT_URL;
     this.postLoginErrorUrl = env.POST_LOGIN_ERROR_URL;
+    this.rabbitmqUrl = env.RABBITMQ_URL;
   }
 }
 

@@ -1,4 +1,15 @@
 services:
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: ecilost-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ecilost
+      RABBITMQ_DEFAULT_PASS: ecilost
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+
   postgres:
     image: postgres:17-alpine
     container_name: ecilost-auth-db
