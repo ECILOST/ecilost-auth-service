@@ -15,6 +15,10 @@ export class PrismaUserRepository implements UserRepository {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
+  findByEmail(email: string): Promise<User | null> {
+    return this.prisma.user.findUnique({ where: { email } });
+  }
+
   findByGoogleSub(googleSub: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { googleSub } });
   }

@@ -90,6 +90,22 @@ export class UsersService {
    * Relee al usuario en cada refresco. Sin esto, suspender una cuenta no surtiria efecto
    * hasta que venciera su refresh token, que dura una semana.
    */
+  /**
+   * Busca a alguien por su correo, para que un funcionario pueda dar con su `userId`.
+   *
+   * Hace falta porque el resto de la plataforma identifica a las personas por `userId` y no
+   * por correo: wallet, auction-core y engagement guardan ese identificador y nada mas. Sin
+   * una forma de traducir de lo que un funcionario conoce a lo que los servicios esperan,
+   * operaciones como recargar una billetera no se pueden hacer.
+   *
+   * Es una busqueda exacta y no un listado: sirve para confirmar a quien ya se conoce, no
+   * para recorrer el directorio.
+   */
+  async findByEmail(email: string): Promise<User | null> {
+    // Se guarda en minusculas al provisionar, asi que se normaliza igual al buscar.
+    return this.users.findByEmail(email.trim().toLowerCase());
+  }
+
   async requireActiveById(id: string): Promise<User> {
     const user = await this.users.findById(id);
     if (!user) {

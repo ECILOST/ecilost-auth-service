@@ -25,6 +25,17 @@ export class Principal {
   }
 
   /**
+   * Administrar billeteras ajenas: hoy, abonarles ECICoin.
+   *
+   * Tiene bandera propia y no se reutiliza `canManageCatalog` porque no es la misma
+   * capacidad: dar saldo no es administrar objetos perdidos, y el dia que eso lo haga
+   * tesoreria y no el mismo funcionario, esto cambia aqui y el cliente no se entera.
+   */
+  canManageWallets(): boolean {
+    return this.role === 'STAFF';
+  }
+
+  /**
    * Participar en una subasta.
    *
    * El operador administra los objetos perdidos y no participa en las subastas, asi que
