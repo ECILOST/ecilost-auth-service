@@ -1,9 +1,17 @@
 import { generateKeyPairSync } from 'node:crypto';
-import { AuthConfig, type EnvironmentVariables } from '../../src/config/auth.config.js';
+import {
+  AuthConfig,
+  type EnvironmentVariables,
+} from '../../src/config/auth.config.js';
 
 /** Par RS256 efimero: ninguna llave real entra al repositorio ni a las pruebas. */
-export function generateTestKeyPair(): { privateKey: string; publicKey: string } {
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+export function generateTestKeyPair(): {
+  privateKey: string;
+  publicKey: string;
+} {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+  });
   return {
     privateKey: Buffer.from(
       privateKey.export({ type: 'pkcs8', format: 'pem' }),
@@ -14,7 +22,9 @@ export function generateTestKeyPair(): { privateKey: string; publicKey: string }
   };
 }
 
-export function buildTestConfig(overrides: Partial<EnvironmentVariables> = {}): AuthConfig {
+export function buildTestConfig(
+  overrides: Partial<EnvironmentVariables> = {},
+): AuthConfig {
   const keys = generateTestKeyPair();
   return new AuthConfig({
     DATABASE_URL: 'postgresql://u:p@localhost:5433/db?schema=auth_test',
@@ -32,6 +42,7 @@ export function buildTestConfig(overrides: Partial<EnvironmentVariables> = {}): 
     COOKIE_SECURE: 'false',
     POST_LOGIN_REDIRECT_URL: 'http://localhost:5173/rooms',
     POST_LOGIN_ERROR_URL: 'http://localhost:5173/login',
+    RABBITMQ_URL: 'amqp://ecilost:ecilost@localhost:5672',
     ...overrides,
   } as EnvironmentVariables);
 }

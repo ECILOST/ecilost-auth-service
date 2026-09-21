@@ -29,6 +29,11 @@ export class PrismaUserRepository implements UserRepository {
         fullName: input.fullName,
         avatarUrl: input.avatarUrl ?? null,
         role: input.role,
+        // Prisma ejecuta el alta y este insert anidado de forma atomica. Solo se crea
+        // cuando el usuario no existia; los siguientes logins toman la rama `update`.
+        outboxEvents: {
+          create: { type: 'user.created.v1' },
+        },
       },
       update: {
         email: input.email,
@@ -38,7 +43,10 @@ export class PrismaUserRepository implements UserRepository {
     });
   }
 
-  async setInstitutionalCode(userId: string, code: string | null): Promise<User> {
+  async setInstitutionalCode(
+    userId: string,
+    code: string | null,
+  ): Promise<User> {
     try {
       return await this.prisma.user.update({
         where: { id: userId },

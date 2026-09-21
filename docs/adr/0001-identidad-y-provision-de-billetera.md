@@ -2,8 +2,7 @@
 
 ## Estado
 
-Proposed — las decisiones de identidad están implementadas; la integración que dispara la
-emisión inicial de ECICoin está pendiente.
+Accepted — RabbitMQ y un outbox transaccional entregan `user.created.v1` a Wallet.
 
 ## Contexto
 
@@ -18,7 +17,7 @@ usuario. Wallet debe crear la billetera una sola vez, sin depender de joins entr
 datos ni perder la emisión si Wallet no está disponible. No hay una integración entre los
 dos repositorios.
 
-## Decisiones identificadas
+## Decisiones
 
 1. Auth usa Google OAuth 2.0 con Authorization Code + PKCE; no almacena contraseñas.
 2. Auth emite tokens RS256 propios con `sub` y `role`; los demás servicios los verifican
@@ -38,32 +37,33 @@ dos repositorios.
 - `docs/ECILOST-Diagrama-Clases.md`: `WalletService.issueInitialBalance(studentId)` y la
   regla de que los servicios se comunican por puertos o eventos.
 
-## Decisión pendiente
+## Decisión de integración
 
-Se debe seleccionar y documentar uno de estos mecanismos antes de implementar HU-09:
+Auth persiste `user.created.v1` en `outbox_events` dentro del mismo `upsert` que crea la
+identidad. Un publicador lo envía a RabbitMQ al exchange duradero `ecilost.events`, con la
+routing key `user.created.v1`, y marca el registro como publicado solo después de la
+confirmación del broker. Si RabbitMQ no está disponible, la identidad se conserva y el evento
+se reintenta.
 
-1. Evento `UserCreated` publicado en un Event Broker y consumido idempotentemente por Wallet.
-2. Llamada HTTP síncrona desde Auth hacia Wallet mediante un puerto de salida.
-
-La opción 1 requeriría definir broker, paquete o contrato compartido, tópico, esquema del
-evento, reintentos, clave de deduplicación y mecanismo de publicación confiable (por ejemplo,
-outbox). La opción 2 requeriría definir URL, autenticación entre servicios, timeout, reintentos
-y qué ocurre si Wallet no responde después de crear al usuario.
+Wallet consume la cola duradera `ecilost.wallet.user-created`. El mensaje contiene `eventId`,
+`userId`, `role` y `occurredAt`; solo los usuarios `STUDENT` activan `bootstrap(userId)`. El
+consumer confirma el mensaje después del bootstrap y lo reencola ante un fallo. `bootstrap` usa
+un `upsert` y una referencia única, por lo que tolera entregas al menos una vez sin duplicar la
+emisión inicial.
 
 ## Consecuencias
 
-- Mientras la decisión siga pendiente, Auth puede crear usuarios pero no puede garantizar la
-  emisión inicial de ECICoin.
+- Auth no depende de la disponibilidad de Wallet ni de RabbitMQ durante el login; el outbox
+  conserva la intención de aprovisionar la billetera.
 - No se introducen dependencias de base de datos entre Auth y Wallet.
-- El contrato debe transportar como mínimo `userId`, rol, instante de creación e identificador
-  único del evento o solicitud para que Wallet sea idempotente.
+- RabbitMQ entrega al menos una vez; Wallet debe conservar el consumo idempotente.
 
 ## Riesgos
 
-- Una llamada HTTP sin estrategia de recuperación puede crear usuarios sin billetera.
-- Un evento publicado fuera de la transacción de creación puede perderse si el proceso falla
-  entre ambas operaciones.
-- Un consumidor no idempotente puede acreditar el saldo inicial más de una vez.
+- Un publisher detenido deja eventos pendientes en el outbox y retrasa, pero no pierde, la
+  provisión. Deben monitorearse su antigüedad y número de intentos.
+- Un consumidor no idempotente acreditaría el saldo inicial más de una vez; Wallet lo evita con
+  su operación de bootstrap idempotente.
 
 ## Referencias
 
