@@ -18,6 +18,34 @@ permissions:
 jobs:
   node:
     runs-on: ubuntu-latest
+    # Las e2e levantan la aplicacion completa contra PostgreSQL real (esquema auth_test) y
+    # publican user.created en RabbitMQ, igual que en docker-compose.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: ecilost
+          POSTGRES_PASSWORD: ecilost
+          POSTGRES_DB: ecilost_auth
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U ecilost -d ecilost_auth"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      rabbitmq:
+        image: rabbitmq:4-alpine
+        env:
+          RABBITMQ_DEFAULT_USER: ecilost
+          RABBITMQ_DEFAULT_PASS: ecilost
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -33,6 +61,15 @@ jobs:
         run: npm run lint
       - name: Tests
         run: npm test
+      # .env.test no se versiona: se arma desde la plantilla con un par RS256 desechable,
+      # generado en cada corrida. No hay ningun secreto real en este paso.
+      - name: Prepare e2e environment
+        run: |
+          cp .env.test.example .env.test
+          sed -i '/^JWT_PRIVATE_KEY=$/d;/^JWT_PUBLIC_KEY=$/d' .env.test
+          node -e "const{generateKeyPairSync}=require('node:crypto');const{privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048});console.log('JWT_PRIVATE_KEY='+Buffer.from(privateKey.export({type:'pkcs8',format:'pem'})).toString('base64'));console.log('JWT_PUBLIC_KEY='+Buffer.from(publicKey.export({type:'spki',format:'pem'})).toString('base64'))" >> .env.test
+      - name: E2E tests (PostgreSQL + RabbitMQ)
+        run: npm run test:e2e
       - name: Build
         run: npm run build
 
