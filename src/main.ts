@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
 import { AuthConfig } from './config/auth.config.js';
+import { installMetrics } from './observability/metrics.js';
 
 const API_DESCRIPTION = [
   'Identity service of **ECI Lost & Auction**, the platform where the university auctions',
@@ -108,6 +109,8 @@ const API_DESCRIPTION = [
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(AuthConfig);
+
+  installMetrics(app, 'auth');
 
   // Firma las cookies de flujo y de sesion: manipularlas invalida la firma.
   app.use(cookieParser(config.cookieSecret));
