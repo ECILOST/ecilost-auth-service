@@ -1,15 +1,19 @@
 import { Controller, Get, INestApplication, UseGuards, ValidationPipe } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import cookieParser from 'cookie-parser';
+import { randomUUID } from 'node:crypto';
 import request from 'supertest';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AppModule } from '../src/app.module.js';
 import { AuthModule } from '../src/auth/auth.module.js';
+import { GoogleOidcClient } from '../src/auth/google/google-oidc.client.js';
 import { TokenService } from '../src/auth/tokens/token.service.js';
 import { Roles } from '../src/common/decorators/roles.decorator.js';
 import { JwtAuthGuard } from '../src/common/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../src/common/guards/roles.guard.js';
 import { AuthConfig } from '../src/config/auth.config.js';
+import { revokeStaff } from '../src/operations/revoke-staff.js';
+import { PrismaService } from '../src/prisma/prisma.service.js';
 
 const STAFF_ID = '11111111-1111-4111-8111-111111111111';
 const STUDENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -189,6 +193,81 @@ describe('Autorizacion por rol (e2e)', () => {
         .get('/pruebas-de-rol/sin-guard-de-sesion')
         .set('Authorization', `Bearer ${staffToken}`)
         .expect(401);
+    });
+  });
+
+  describe('Revocacion de permisos de funcionario', () => {
+    it('revoca las sesiones anteriores y emite STUDENT tras un nuevo inicio de sesion', async () => {
+      const prisma = app.get(PrismaService);
+      const tokens = app.get(TokenService);
+      const google = app.get(GoogleOidcClient);
+      const sub = randomUUID();
+      const email = `${sub}@example.test`;
+      const user = await prisma.user.create({
+        data: { googleSub: sub, email, fullName: 'Funcionario de prueba', role: 'STAFF' },
+      });
+      const exchange = vi.spyOn(google, 'exchangeCode').mockResolvedValue({
+        sub,
+        email,
+        fullName: user.fullName,
+        emailVerified: true,
+      });
+
+      try {
+        const oldSessions = await Promise.all([
+          tokens.issueRefreshToken(user.id),
+          tokens.issueRefreshToken(user.id),
+        ]);
+        expect(await revokeStaff(prisma, user.id)).toEqual({ status: 'revoked', sessions: 2 });
+        for (const session of oldSessions) {
+          await expect(tokens.rotateRefreshToken(session)).rejects.toThrow();
+        }
+
+        const agent = request.agent(server());
+        const start = await agent.get('/auth/google').expect(302);
+        const state = new URL(start.headers.location).searchParams.get('state');
+        await agent.get('/auth/google/callback').query({ code: 'test-code', state }).expect(302);
+
+        expect(await revokeStaff(prisma, user.id)).toEqual({ status: 'already-student' });
+        const session = await agent.post('/auth/token').expect(200);
+        expect(session.body.role).toBe('STUDENT');
+        await request(server())
+          .get('/pruebas-de-rol/solo-funcionario')
+          .set('Authorization', `Bearer ${session.body.access_token}`)
+          .expect(403);
+      } finally {
+        exchange.mockRestore();
+        await prisma.user.delete({ where: { id: user.id } });
+      }
+    });
+
+    it('cierra la sesion aunque haya una rotacion concurrente', async () => {
+      const prisma = app.get(PrismaService);
+      const tokens = app.get(TokenService);
+      const sub = randomUUID();
+      const user = await prisma.user.create({
+        data: {
+          googleSub: sub,
+          email: `${sub}@example.test`,
+          fullName: 'Funcionario de prueba',
+          role: 'STAFF',
+        },
+      });
+
+      try {
+        const refreshToken = await tokens.issueRefreshToken(user.id);
+        const [, revocation] = await Promise.allSettled([
+          tokens.rotateRefreshToken(refreshToken),
+          revokeStaff(prisma, user.id),
+        ]);
+
+        expect(revocation).toMatchObject({ status: 'fulfilled', value: { status: 'revoked' } });
+        await expect(
+          prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } }),
+        ).resolves.toBe(0);
+      } finally {
+        await prisma.user.delete({ where: { id: user.id } });
+      }
     });
   });
 });

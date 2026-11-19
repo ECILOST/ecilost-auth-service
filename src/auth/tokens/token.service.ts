@@ -16,6 +16,7 @@ import { AuthError } from '../domain/auth-error.js';
 import { Principal } from '../domain/principal.js';
 import {
   REFRESH_TOKEN_REPOSITORY,
+  type NewRefreshToken,
   type RefreshTokenRepository,
 } from './refresh-token.repository.js';
 
@@ -91,7 +92,9 @@ export class TokenService implements OnModuleInit {
 
   /** Abre una cadena de rotacion nueva. Se llama una vez por inicio de sesion. */
   async issueRefreshToken(userId: string): Promise<string> {
-    return this.persist(userId, randomUUID());
+    const { rawToken, record } = this.newRefreshToken(userId, randomUUID());
+    await this.refreshTokens.create(record);
+    return rawToken;
   }
 
   /**
@@ -106,7 +109,7 @@ export class TokenService implements OnModuleInit {
     }
 
     if (stored.revokedAt !== null) {
-      await this.refreshTokens.revokeFamily(stored.familyId);
+      await this.refreshTokens.revokeFamily(stored.userId, stored.familyId);
       this.logger.warn(
         `Reuso de refresh token detectado. Familia ${stored.familyId} revocada.`,
       );
@@ -117,33 +120,39 @@ export class TokenService implements OnModuleInit {
       throw new AuthError('invalid_request', 'refresh token expirado');
     }
 
-    if (!(await this.refreshTokens.consume(stored.id))) {
+    const successor = this.newRefreshToken(stored.userId, stored.familyId);
+    if (!(await this.refreshTokens.rotate(stored.id, successor.record))) {
       // Otra peticion lo consumio entre el SELECT y el UPDATE: mismo caso que un reuso.
-      await this.refreshTokens.revokeFamily(stored.familyId);
+      await this.refreshTokens.revokeFamily(stored.userId, stored.familyId);
       throw new AuthError('invalid_request', 'refresh token consumido en paralelo');
     }
 
     return {
       userId: stored.userId,
-      rawToken: await this.persist(stored.userId, stored.familyId),
+      rawToken: successor.rawToken,
     };
   }
 
   /** Logout. Idempotente: cerrar una sesion ya cerrada no es un error. */
   async revokeRefreshToken(rawToken: string): Promise<void> {
     const stored = await this.refreshTokens.findByHash(hash(rawToken));
-    if (stored) await this.refreshTokens.revokeFamily(stored.familyId);
+    if (stored) await this.refreshTokens.revokeFamily(stored.userId, stored.familyId);
   }
 
-  private async persist(userId: string, familyId: string): Promise<string> {
+  private newRefreshToken(userId: string, familyId: string): {
+    rawToken: string;
+    record: NewRefreshToken;
+  } {
     const rawToken = randomBytes(32).toString('base64url');
-    await this.refreshTokens.create({
-      tokenHash: hash(rawToken),
-      familyId,
-      userId,
-      expiresAt: new Date(Date.now() + this.config.refreshTokenTtlSeconds * 1000),
-    });
-    return rawToken;
+    return {
+      rawToken,
+      record: {
+        tokenHash: hash(rawToken),
+        familyId,
+        userId,
+        expiresAt: new Date(Date.now() + this.config.refreshTokenTtlSeconds * 1000),
+      },
+    };
   }
 }
 
