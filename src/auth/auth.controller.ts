@@ -303,8 +303,8 @@ export class AuthController {
   @ApiUnauthorizedResponse({
     description: [
       'No `Authorization` header, a malformed one, or a token that fails verification',
-      'because it expired, was signed with another key, or carries a different issuer or',
-      'audience. The response includes `WWW-Authenticate: Bearer error="invalid_token"`,',
+      'because it expired, lacks `exp`, was signed with another key, or has a different',
+      'issuer or audience. The response includes `WWW-Authenticate: Bearer error="invalid_token"`,',
       'per RFC 6750. The client is expected to send the user back to the login flow.',
     ].join('\n'),
   })
