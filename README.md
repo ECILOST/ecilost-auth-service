@@ -1,218 +1,76 @@
-# ecilost-auth-service
+# ECILOST Auth Service
 
-Servicio de identidad de ECI Lost & Auction. Autentica con **Google OAuth 2.0**
-(Authorization Code + PKCE) y emite el access token propio que verifican los demas
-microservicios. HU-01 y base de HU-02.
+Servicio de identidad de ECI Lost & Auction. Autentica con Google OAuth 2.0 mediante Authorization Code y PKCE. Emite los JWT que validan Catalog, Auction, Wallet y Engagement y publica sus claves públicas mediante JWKS.
 
-Entra cualquier cuenta de Google con el correo verificado. El primer inicio de sesion da de
-alta al usuario como `STUDENT`, salvo que su correo este en `STAFF_EMAILS`.
+## Inicio local
 
-## Roles
-
-Dos roles sin solapamiento. El operador administra los objetos perdidos, el estudiante
-compite en las subastas.
-
-| Capacidad | `STAFF` | `STUDENT` |
-|---|---|---|
-| Registrar objetos y crear lotes | si | no |
-| Programar salas | si | no |
-| Pujar | no | si |
-
-Un operador no puede pujar **en ninguna sala**, no solo en las que el programo: dirigir la
-subasta y competir en ella son incompatibles.
-
-`GET /auth/me` devuelve las tres banderas para que el cliente arme su menu sin cablear el
-rol. La restriccion la aplica cada servicio sobre sus propios endpoints, con `RolesGuard` y
-el decorador `@Roles`. Un `401` significa que no hay sesion valida; un `403`, que la hay
-pero el rol no alcanza.
-
-## Puesta en marcha
+Requiere Node.js 22, Docker Compose, PostgreSQL y RabbitMQ. Para iniciar sesión en el navegador, configura un cliente OAuth de Google para el entorno local.
 
 ```bash
-npm install
-cp .env.example .env          # rellena GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET y las llaves
-docker compose up -d          # PostgreSQL en el puerto 5433
-npx prisma migrate dev        # crea el esquema `auth`
+cp .env.example .env
+docker compose up -d
+npm ci
+npm run db:deploy
 npm run start:dev
 ```
 
-Las llaves RS256 y el resto de variables estan documentadas en `.env.example`.
+Completa `.env` antes de instalar. La URI de retorno registrada en Google debe coincidir con `GOOGLE_REDIRECT_URI`, normalmente `http://localhost:3000/auth/google/callback`. Usa un par RS256 propio del entorno y conserva `JWT_PRIVATE_KEY`, `COOKIE_SECRET` y `GOOGLE_CLIENT_SECRET` fuera de Git. La plantilla describe las variables y el formato de las llaves.
 
-## Endpoints
+| Comprobación | URL local |
+|---|---|
+| Salud del proceso | [GET /health](http://localhost:3000/health) |
+| Swagger UI | [/docs](http://localhost:3000/docs) |
+| OpenAPI JSON | [/docs-json](http://localhost:3000/docs-json) |
+| Llaves públicas | [/.well-known/jwks.json](http://localhost:3000/.well-known/jwks.json) |
 
-| Metodo | Ruta | Proposito |
+## Sesión y Swagger
+
+1. Abre `GET /auth/google` en el navegador. Google devuelve el control a `GET /auth/google/callback`. Auth verifica la identidad y emite la cookie firmada `ecilost_rt` con `HttpOnly`.
+2. En el mismo origen, llama a `POST /auth/token` con esa cookie. El servicio rota la sesión de renovación y devuelve `access_token`, `expires_in` y `role`.
+3. Abre Swagger y usa **Authorize** en el esquema `access-token`. Pega el valor de `access_token` y ejecuta `GET /auth/me`. Para `POST /auth/token` y `POST /auth/logout`, el navegador envía la cookie obtenida durante el inicio de sesión.
+
+| Operación | Credencial | Resultado |
 |---|---|---|
-| GET | `/auth/google` | Inicia el flujo. Redirige a Google con PKCE, state y nonce |
-| GET | `/auth/google/callback` | Canjea el codigo, crea la sesion y redirige |
-| POST | `/auth/token` | Canjea la cookie de sesion por un access token de 15 min |
-| POST | `/auth/logout` | Revoca la sesion |
-| GET | `/auth/me` | Recurso protegido de referencia. Sin token valido, 401 |
-| GET | `/auth/profile` | Correo, nombre, avatar, codigo institucional y rol |
-| PATCH | `/auth/profile` | Fija o borra el codigo institucional |
-| GET | `/.well-known/jwks.json` | Llave publica para que los demas servicios verifiquen en local |
+| `POST /auth/token` | Cookie de sesión | Emite un JWT nuevo y rota la cookie |
+| `POST /auth/logout` | Cookie de sesión | Revoca la cadena de renovación |
+| `GET /auth/me` | Bearer JWT | Identificador, rol y capacidades del JWT |
+| `GET /auth/profile` | Bearer JWT | Perfil actual en PostgreSQL |
+| `PATCH /auth/profile` | Bearer JWT | Fija o borra el código institucional |
+| `GET /auth/users?email=...` | Bearer JWT de `STAFF` | Busca una cuenta para operaciones administrativas |
 
-La documentacion completa en OpenAPI, con la descripcion de cada endpoint y sus codigos de
-exito y de error, esta en **`/docs`** con el servicio arrancado.
+Los JWT se firman con RS256 e incluyen `sub`, `role`, `iss`, `aud`, `iat`, `jti` y `exp`. El correo, el nombre y el avatar viven en el perfil. Un token ausente, vencido o sin `exp` produce `401`. Un rol insuficiente produce `403`.
 
-El access token viaja en `Authorization: Bearer`. El refresh token vive solo en una cookie
-`httpOnly` firmada y se rota en cada canje.
+## Roles y revocación
 
-## Perfil
+El correo de Google debe estar verificado. En el alta, `STAFF_EMAILS` asigna `STAFF` a las cuentas autorizadas. El resto recibe `STUDENT`. Catalog, Auction y Wallet aplican los permisos en cada operación.
 
-`/auth/me` decodifica el token y no consulta la base: por eso sirve de ejemplo de como los
-demas servicios verifican una sesion por su cuenta. `/auth/profile` si la consulta, porque
-ahi viven los datos de presentacion. El token solo lleva `sub` y `role`, para que un token
-filtrado exponga lo menos posible.
+| Capacidad | Rol |
+|---|---|
+| Registrar objetos, crear lotes, programar salas y recargar Ecicoin | `STAFF` |
+| Participar y pujar | `STUDENT` |
 
-| Campo | De donde sale | Quien lo cambia |
-|---|---|---|
-| `fullName`, `avatarUrl` | Google, en cada inicio de sesion | Google |
-| `email`, `role` | Se fijan al dar de alta la cuenta | Nadie, desde la API |
-| `institutionalCode` | Lo escribe la persona | La persona, con `PATCH /auth/profile` |
+Para retirar `STAFF`, compila el servicio y exporta `DATABASE_URL` para la base de Auth que administra el operador. Ejecuta:
 
-El codigo institucional es unico y opcional. **No** es el identificador con el que los demas
-servicios se refieren a alguien: ese es `userId`, que nunca cambia.
+```bash
+npm run build
+npm run staff:revoke -- <uuid-del-usuario>
+```
 
-## Pruebas
+El comando cambia el rol a `STUDENT` y revoca sus sesiones activas de renovación en una transacción. Los JWT ya emitidos conservan sus permisos hasta su `exp`. El UUID corresponde a `userId`. El código institucional es opcional, único y editable por el titular.
 
-Las unitarias corren sin nada mas:
+## Pruebas y despliegue
 
 ```bash
 npm test
 npm run lint
 npm run typecheck
-```
 
-Las de extremo a extremo necesitan PostgreSQL levantado y su propio entorno, que **no se
-versiona**. Preparalo una vez tras clonar:
-
-```bash
-cp .env.test.example .env.test   # luego genera el par RS256 con el comando que trae dentro
-docker compose up -d
+cp .env.test.example .env.test
+# Completa el par RS256 efímero según la plantilla antes de ejecutar la suite.
 npm run test:e2e
 ```
 
-Sin `.env.test` la suite se detiene nombrando el archivo que falta (`ENOENT`), en vez de
-arrancar contra la base equivocada.
+Las pruebas de integración usan el esquema `auth_test` de PostgreSQL, RabbitMQ local y un doble de Google. GitHub Actions ejecuta la validación en PR hacia `develop` y `main`. Las actualizaciones de esas ramas publican la imagen en GHCR y, con el entorno configurado, ejecutan las migraciones y despliegan en Azure Container Apps.
 
-Las e2e usan el esquema `auth_test` sobre el mismo contenedor y sustituyen la llamada a
-Google por un doble. El resto del flujo (PKCE, state, cookies, base de datos) es el real.
-Dos valores de ese archivo estan fijados en aserciones: si cambias
-`ACCESS_TOKEN_TTL_SECONDS` o el correo de `STAFF_EMAILS`, hay pruebas que dejan de pasar.
-
----
-
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
-
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
-
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ npm install
-```
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- [ADR de identidad y provisión de billetera](docs/adr/0001-identidad-y-provision-de-billetera.md)
+- [Configuración de ejemplo](.env.example)
