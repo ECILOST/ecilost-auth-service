@@ -72,6 +72,7 @@ export class TokenService implements OnModuleInit {
         issuer: this.config.jwtIssuer,
         audience: this.config.jwtAudience,
         algorithms: [ALG],
+        requiredClaims: ['exp'],
       });
       if (!payload.sub || typeof payload.role !== 'string') {
         throw new Error('claims incompletos');
