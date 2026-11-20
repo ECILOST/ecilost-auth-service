@@ -355,6 +355,23 @@ describe('Autenticacion con Google OAuth 2.0 (e2e)', () => {
         .expect(401);
     });
 
+    it('responde 401 con un token sin vencimiento', async () => {
+      const key = await importPKCS8(config.jwtPrivateKeyPem, 'RS256');
+      const jwt = await new SignJWT({ role: 'STUDENT' })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setSubject('33333333-3333-4333-8333-333333333333')
+        .setIssuer(config.jwtIssuer)
+        .setAudience(config.jwtAudience)
+        .setIssuedAt()
+        .sign(key);
+
+      await request(server())
+        .get('/auth/me')
+        .set('Authorization', `Bearer ${jwt}`)
+        .expect(401)
+        .expect('WWW-Authenticate', 'Bearer error="invalid_token"');
+    });
+
     it('responde 401 con un token firmado por otra llave', async () => {
       const { generateKeyPairSync } = await import('node:crypto');
       const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });

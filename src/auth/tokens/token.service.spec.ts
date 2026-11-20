@@ -61,6 +61,19 @@ describe('TokenService', () => {
       await expect(service.verifyAccessToken(expired)).rejects.toBeInstanceOf(AuthError);
     });
 
+    it('exige un vencimiento en el access token', async () => {
+      const key = await importPKCS8(config.jwtPrivateKeyPem, 'RS256');
+      const jwt = await new SignJWT({ role: 'STUDENT' })
+        .setProtectedHeader({ alg: 'RS256' })
+        .setSubject(USER_ID)
+        .setIssuer(config.jwtIssuer)
+        .setAudience(config.jwtAudience)
+        .setIssuedAt()
+        .sign(key);
+
+      await expect(service.verifyAccessToken(jwt)).rejects.toBeInstanceOf(AuthError);
+    });
+
     it('rechaza un token firmado con otra llave', async () => {
       const otherConfig = buildTestConfig(generateOtherKeys());
       const otherService = new TokenService(otherConfig, new FakeRefreshTokenRepository());
