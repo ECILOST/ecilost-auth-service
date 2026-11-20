@@ -6,6 +6,13 @@ export default defineConfig({
   // added by `nest g library`.
   plugins: [tsconfigPaths()],
   test: {
+    coverage: {
+      provider: 'v8',
+      thresholds: { lines: 80 },
+      reporter: ['text-summary', 'html', 'lcov'],
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      exclude: ['src/generated/**', '**/*.d.ts', '**/*.spec.*', '**/*.test.*'],
+    },
     globals: true,
     root: './',
     include: ['**/*.spec.ts'],
