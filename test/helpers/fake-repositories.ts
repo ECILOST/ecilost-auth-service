@@ -104,16 +104,20 @@ export class FakeRefreshTokenRepository implements RefreshTokenRepository {
     return this.rows.find((r) => r.tokenHash === tokenHash) ?? null;
   }
 
-  async consume(id: string): Promise<boolean> {
-    const row = this.rows.find((r) => r.id === id && r.revokedAt === null);
+  async rotate(id: string, successor: NewRefreshToken): Promise<boolean> {
+    const now = new Date();
+    const row = this.rows.find((r) => r.id === id && r.revokedAt === null && r.expiresAt > now);
     if (!row) return false;
-    row.revokedAt = new Date();
+    row.revokedAt = now;
+    await this.create(successor);
     return true;
   }
 
-  async revokeFamily(familyId: string): Promise<void> {
+  async revokeFamily(userId: string, familyId: string): Promise<void> {
     for (const row of this.rows) {
-      if (row.familyId === familyId && row.revokedAt === null) row.revokedAt = new Date();
+      if (row.userId === userId && row.familyId === familyId && row.revokedAt === null) {
+        row.revokedAt = new Date();
+      }
     }
   }
 }
