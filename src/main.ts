@@ -108,8 +108,11 @@ const API_DESCRIPTION = [
   'the ErrorResponse schema.',
 ].join('\n');
 
+import { installMetrics } from './observability/metrics.js';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  installMetrics(app, 'auth');
   const config = app.get(AuthConfig);
 
   // Firma las cookies de flujo y de sesion: manipularlas invalida la firma.
