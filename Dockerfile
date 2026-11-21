@@ -10,7 +10,7 @@ COPY src ./src
 # Prisma client generation needs a URL at build time; this is a dummy local URL,
 # never a production credential and it is not included in the runtime image.
 RUN printf 'DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build\n' > .env \
-    && npm ci --no-audit --no-fund \
+    && npm ci --no-audit --no-fund --ignore-scripts \
     && npm run build \
     && rm -f .env
 
